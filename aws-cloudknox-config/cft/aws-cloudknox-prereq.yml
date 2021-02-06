@@ -1,0 +1,144 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Secrets Manager, SSM Automation, Remediation Lambda for CloudKnox
+
+# Provisions Secrets Manager with CloudKnox Credentials
+# Provisions Pre-reqs- SSM Automation Document, CloudKnox Remediation Lambda S3
+
+
+# @kmmahaj
+#
+## License:
+## This code is made available under the MIT-0 license. See the LICENSE file.
+
+
+Outputs:
+  AutomationAssumeRoleArn:
+    Description: Arn for AutomationAssumeRole
+    Value: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}'
+    Export: # added to export
+      Name: CloudKnox-AutomationAssumeRoleArn
+
+Parameters:
+  accessKey:
+    Description: >-
+      REQUIRED. Default Access Key for CloudKnox
+    Type: String
+    AllowedPattern: .+
+    Default: "SAAKPTJKIVXWBHCN"
+    ConstraintDescription: accessKey is required
+  secretKey:
+    Description: >-
+      REQUIRED. Default Secret Key for CloudKnox
+    Type: String
+    AllowedPattern: .+
+    Default: "DWUB6rnj4L7fakMB"
+    ConstraintDescription: secretKey is required
+  serviceId:
+    Description: >-
+      REQUIRED. Default Service Account ID for CloudKnox
+    Type: String
+    AllowedPattern: .+
+    Default: "SA28FPC69M5WZANP"
+    ConstraintDescription: serviceId is required
+  apiId:
+    Description: >-
+      REQUIRED. Default API ID for CloudKnox
+    Type: String
+    AllowedPattern: .+
+    Default: "21564ec10f7943d7eb031e74e69f1abc"
+    ConstraintDescription: api Id is required
+  url:
+    Description: >-
+      REQUIRED. Default url for CloudKnox
+    Type: String
+    AllowedPattern: .+
+    Default: "app.cloudknox.io"
+    ConstraintDescription: url is required
+  CloudKnoxSecretArn:
+    Description: >-
+      Enter the Arn of the CloudKnox Secret if the secret is already created in Secrets Manager
+    Type: String
+    Default: ''
+
+
+Conditions:
+  CreateNewCloudKnoxSecret: !Equals 
+    - !Ref CloudKnoxSecretArn
+    - ''
+
+Resources:
+
+# SSM Automation Role
+  AutomationAssumeRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub cloudknox-automationassumerole-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ssm.amazonaws.com
+                - events.amazonaws.com
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess"
+
+# S3 Bucket for CloudKnox Remediation Lambda
+  S3CloudKnoxRemediationBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "s3-cloudknoxiamuserrightsize-${AWS::AccountId}-${AWS::Region}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      AccessControl: BucketOwnerFullControl
+      LifecycleConfiguration:
+        Rules:
+          -
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 3
+            NoncurrentVersionExpirationInDays: 3
+            Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        -
+          Key: Description
+          Value: S3 Destination Bucket for CloudKnox Remediation Lambda
+      VersioningConfiguration:
+        Status: Enabled
+
+# Secrets Management - CloudKnox Credentials
+
+#Create Secret 
+  CloudKnoxSecretString:
+    Type: AWS::SecretsManager::Secret
+    Condition: CreateNewCloudKnoxSecret
+    Properties:
+      Description: Credentials required for CloudKnox
+      Name: CloudKnoxSecretString
+      SecretString:
+        Fn::Join:
+        - ''
+        - - '{"serviceId":"'
+          - Ref: serviceId
+          - '","apiId": "'
+          - Ref: apiId
+          - '","accessKey": "'
+          - Ref: accessKey
+          - '","secretKey": "'
+          - Ref: secretKey
+          - '","url": "'
+          - Ref: url
+          - '","accountId": "'
+          - Ref: AWS::AccountId
+          - '"}'

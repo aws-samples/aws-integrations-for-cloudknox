@@ -1,0 +1,171 @@
+
+Description: AWS Systems Manager Automation, AWS Lambda and AWS Config Remediation for CloudKnox IAM User Rightsizing
+AWSTemplateFormatVersion: "2010-09-09"
+
+# Provisions Custom Remediation for IAM Rightsizing with CloudKnox and AWS Config
+#  - Creates the IAM Rightsizing Lambda that uses CloudKnox Policy API
+#  - Provisions a Systems Manager Automation Document that invokes the lambda 
+#  - Provisions an AWS Config Remediation that uses the Systems Manager Automation Document
+#  - Attaches the AWS Config Remediation to the AWS Config Rule (set up earlier by the RDK)
+
+
+# @kmmahaj
+#
+## License:
+## This code is made available under the MIT-0 license. See the LICENSE file.
+
+
+Parameters:
+  SourceBucket:
+    Description: S3 Bucket that contains the CloudKnox_IAMRightsize Lambda 
+    Type: String
+    Default: 's3-cloudknoxiamuserrightsize-<AWS::AccountId>-<AWS::Region>'
+    MinLength: '1'
+    MaxLength: '255'
+
+
+Resources:
+
+#CloudKnox IAM Rightsize Lambda
+  CloudKnoxIAMUserRightsizeLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: !Join 
+        - ''
+        - - CloudKnox_
+          - IAMRightsize
+      Role: !GetAtt CloudKnoxIAMUserRightsizeLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref SourceBucket
+        S3Key: !Join 
+          - ''
+          - - CloudKnox_IAMRightsize
+            - /
+            - CloudKnox_IAMRightsize
+            - .zip
+      Description: CloudKnox IAM User Rightsizing Lambda
+      Handler: CloudKnox_IAMRightsize.lambda_handler
+      MemorySize: '256'
+      Runtime: python3.7
+      Timeout: 300
+
+#CloudKnox IAM Rightsize Lambda Role
+  CloudKnoxIAMUserRightsizeLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub cloudknox-iamuserrightsizelambdarole-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowLambdaAssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: IAMRemediationPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: '1'
+                Action:
+                  - 's3:*'
+                Effect: Allow
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${SourceBucket}
+                  - !Sub arn:${AWS::Partition}:s3:::${SourceBucket}/*
+              - Sid: '2'
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogStreams'
+                Effect: Allow
+                Resource: '*'
+              - Sid: '3'
+                Action:
+                  - 'secretsmanager:*'
+                  - 'config:*'
+                Effect: Allow
+                Resource: '*'
+              - Sid: '4'
+                Action:
+                  - 'iam:List*'
+                  - 'iam:Describe*'
+                  - 'iam:Get*'
+                  - 'iam:Put*'
+                  - 'iam:*'
+                Effect: Allow
+                Resource: '*'
+              - Sid: '5'
+                Action:
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Resource: '*'
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/ReadOnlyAccess'
+
+  SSMPermissionToCallRightsizeLambda:
+    Type: 'AWS::Lambda::Permission'
+    DependsOn:
+      - CloudKnoxIAMUserRightsizeLambda
+    Properties:
+      FunctionName: !GetAtt 
+        - CloudKnoxIAMUserRightsizeLambda
+        - Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: !ImportValue CloudKnox-AutomationAssumeRoleArn
+
+
+# [CloudKnox-IAMUserRightsizing SSM]
+  CloudKnoxIAMUserRightsizing:
+    Type: AWS::SSM::Document
+    DependsOn: SSMPermissionToCallRightsizeLambda
+    Properties:
+      DocumentType: Automation
+      Name: Custom-CloudKnoxIAMUserRightsizing
+      Content:
+        schemaVersion: '0.3'
+        assumeRole: !ImportValue CloudKnox-AutomationAssumeRoleArn
+        parameters:
+          userid:
+            type: String
+          AutomationAssumeRole:
+            type: String
+            default: !ImportValue CloudKnox-AutomationAssumeRoleArn
+        mainSteps:
+          - name: rightsizeiamuser
+            action: 'aws:invokeLambdaFunction'
+            maxAttempts: 3
+            timeoutSeconds: 180
+            inputs:
+              FunctionName: !GetAtt CloudKnoxIAMUserRightsizeLambda.Arn
+              InvocationType: RequestResponse
+              Payload: '{"parameterName":"userid", "parameterValue":"{{userid}}"}'
+
+
+# [CloudKnox-AWS Config Remediation for high PCI]
+  CloudKnoxPCIConfigRemediation:
+    DependsOn: CloudKnoxIAMUserRightsizing
+    Type: 'AWS::Config::RemediationConfiguration'
+    Properties:
+      ConfigRuleName: CLOUDKNOX_PCI
+      ResourceType: "AWS::IAM::User"
+      TargetId: "Custom-CloudKnoxIAMUserRightsizing"
+      TargetType: "SSM_DOCUMENT"
+      TargetVersion: "1"
+      Parameters:
+        AutomationAssumeRole:
+          StaticValue:
+            Values:
+              - !ImportValue CloudKnox-AutomationAssumeRoleArn
+        userid:
+          ResourceValue:
+            Value: "RESOURCE_ID"
+      ExecutionControls:
+        SsmControls:
+          ConcurrentExecutionRatePercentage: 10
+          ErrorPercentage: 10
+      Automatic: True
+      MaximumAutomaticAttempts: 1
+      RetryAttemptSeconds: 600
