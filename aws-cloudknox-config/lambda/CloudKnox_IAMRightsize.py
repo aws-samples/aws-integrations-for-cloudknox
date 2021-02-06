@@ -1,12 +1,15 @@
 
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# Provisions Secrets Manager with CloudKnox Credentials
+# Provisions Pre-reqs- SSM Automation Document, CloudKnox Remediation Lambda S3
 #  Lambda for IAM Rightsizing with CloudKnox and AWS Config
 #  - IAM Rightsizing Lambda that uses CloudKnox Policy API
 
 # @kmmahaj
-#
 # @mneelka - CloudKnox Policy API
-## License:
-## This code is made available under the MIT-0 license. See the LICENSE file.
+
 
 
 import json

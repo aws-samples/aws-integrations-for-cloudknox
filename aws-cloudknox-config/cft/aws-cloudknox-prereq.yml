@@ -1,14 +1,14 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Description: AWS Secrets Manager, SSM Automation, Remediation Lambda for CloudKnox
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 
 # Provisions Secrets Manager with CloudKnox Credentials
 # Provisions Pre-reqs- SSM Automation Document, CloudKnox Remediation Lambda S3
 
-
 # @kmmahaj
-#
-## License:
-## This code is made available under the MIT-0 license. See the LICENSE file.
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Secrets Manager, SSM Automation, Remediation Lambda for CloudKnox
+
 
 
 Outputs:

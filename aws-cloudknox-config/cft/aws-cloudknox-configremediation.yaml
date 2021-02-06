@@ -1,6 +1,6 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 
-Description: AWS Systems Manager Automation, AWS Lambda and AWS Config Remediation for CloudKnox IAM User Rightsizing
-AWSTemplateFormatVersion: "2010-09-09"
 
 # Provisions Custom Remediation for IAM Rightsizing with CloudKnox and AWS Config
 #  - Creates the IAM Rightsizing Lambda that uses CloudKnox Policy API
@@ -8,11 +8,10 @@ AWSTemplateFormatVersion: "2010-09-09"
 #  - Provisions an AWS Config Remediation that uses the Systems Manager Automation Document
 #  - Attaches the AWS Config Remediation to the AWS Config Rule (set up earlier by the RDK)
 
-
 # @kmmahaj
-#
-## License:
-## This code is made available under the MIT-0 license. See the LICENSE file.
+
+Description: AWS Systems Manager Automation, AWS Lambda and AWS Config Remediation for CloudKnox IAM User Rightsizing
+AWSTemplateFormatVersion: "2010-09-09"
 
 
 Parameters:
