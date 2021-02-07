@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: MIT-0
 
 #  Lambda for IAM Rightsizing with CloudKnox and AWS Config
-#  - IAM Rightsizing Lambda that uses CloudKnox Policy API
+#  - Creates new IAM Policy and detaches existing policies for IAM user
+#  - New IAM Policy created based on policy data retrieved from CloudKnox JEP Controller 
+
 
 # @kmmahaj
-
-
+# @mneelka - CloudKnox Policy API
 
 import json
 import sys
