@@ -1,14 +1,10 @@
-
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-# Provisions Secrets Manager with CloudKnox Credentials
-# Provisions Pre-reqs- SSM Automation Document, CloudKnox Remediation Lambda S3
 #  Lambda for IAM Rightsizing with CloudKnox and AWS Config
 #  - IAM Rightsizing Lambda that uses CloudKnox Policy API
 
 # @kmmahaj
-# @mneelka - CloudKnox Policy API
 
 
 
@@ -232,35 +228,60 @@ def lambda_handler(event, context):
         print('PolicyDocument: ' + PolicyDocument)
         
         PolicyName = 'CloudKnoxRemediationPolicy-' + username + '-' +   str(random.randint(1,21)*5)
+        print('To be attached PolicyName: ' + PolicyName)
         
-        iampolicylist = iamClient.list_policies(
-                            Scope='Local',
-                            OnlyAttached=True,
-                            PolicyUsageFilter='PermissionsPolicy'
-        )
+        response_attachedpolicies = iamClient.list_attached_user_policies(
+                                        UserName=username,
+                                    )
+        if len(response_attachedpolicies['AttachedPolicies'])>0:
+            for attachedpolicy in response_attachedpolicies['AttachedPolicies']:
+                policyarn = attachedpolicy['PolicyArn']
+                print('AttachedPolicyArn to be detached: ' + policyarn)
+                response_detach = iamClient.detach_user_policy(
+                                    UserName=username,
+                                    PolicyArn=policyarn
+                )
+         
 
         response_group = iamClient.list_groups_for_user(
                         UserName=username,
         )
+        print('Grouplength: ' + str(len(response_group['Groups'])))
         
-        for group in response_group['Groups']:
-            groupname = group['GroupName']
-            response = iamClient.remove_user_from_group(
+        if len(response_group['Groups'])>0:
+            for group in response_group['Groups']:
+                groupname = group['GroupName']
+                print('GroupName: ' + groupname)
+                response = iamClient.remove_user_from_group(
                         GroupName=groupname,
                         UserName=username
-            )
+                )
         
+        iampolicylist = iamClient.list_policies(
+                            Scope='All',
+                            OnlyAttached=False
+                        )
+
+        if len(iampolicylist['Policies'])>0:
+            for iampolicy in iampolicylist['Policies']:
+                if (iampolicy['PolicyName'] == PolicyName):
+                    print('Policy already exists: ' + iampolicy['PolicyName'])
+                    response_delete = iamClient.delete_policy(
+                                         PolicyArn=iampolicy['Arn']
+                                       )
         
-        if not any(iampolicy['PolicyName'] == PolicyName for iampolicy in iampolicylist['Policies']):
-            response_create = iamClient.create_policy(
-                        PolicyName=PolicyName,
-                        PolicyDocument=PolicyDocument
-            )
-            PolicyArn = response_create['Policy']['Arn']
-            response = iamClient.attach_user_policy(
+        print('Create new managed policy: ' + PolicyName) 
+        response_create = iamClient.create_policy(
+                                PolicyName=PolicyName,
+                                PolicyDocument=PolicyDocument
+                           )
+        PolicyArn = response_create['Policy']['Arn']
+        print('Attach new managed policy: ' + PolicyArn)
+        response = iamClient.attach_user_policy(
                             UserName=username,
                             PolicyArn=PolicyArn
-            )
-
-    
+                    )
+                
+        
     return 
+
