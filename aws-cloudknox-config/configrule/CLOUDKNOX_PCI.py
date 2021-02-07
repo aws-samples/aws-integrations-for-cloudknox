@@ -1,3 +1,5 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
 
 # Provisions Custom Config Rule for CloudKnox PCI 
 # - Invokes CloudKnox REST APIs for authenticate and Identity Usage
@@ -6,11 +8,8 @@
 #   'Privilege Creep Index')
 
 # @kmmahaj
-#
 # @mneelka - CloudKnox Authenticate and Identity Usage API
-#
-## License:
-## This code is made available under the MIT-0 license. See the LICENSE file.
+
 
 
 
