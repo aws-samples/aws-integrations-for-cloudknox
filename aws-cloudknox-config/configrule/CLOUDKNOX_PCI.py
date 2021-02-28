@@ -8,7 +8,7 @@
 #   'Privilege Creep Index')
 
 # @kmmahaj
-# @mneelka - CloudKnox Authenticate and Identity Usage API
+
 
 
 

@@ -7,7 +7,7 @@
 
 
 # @kmmahaj
-# @mneelka - CloudKnox Policy API
+
 
 import json
 import sys
