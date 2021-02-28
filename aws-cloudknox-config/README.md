@@ -51,5 +51,6 @@ The solution automates the initial setup and deployment in two distinct steps:
 
 
 **Author**
+
 kmmahaj@amazon.com
 
