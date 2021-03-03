@@ -50,7 +50,4 @@ The solution automates the initial setup and deployment in two distinct steps:
 
 
 
-**Author**
-
-Kanishk Mahajan (kmmahaj@amazon.com)
 

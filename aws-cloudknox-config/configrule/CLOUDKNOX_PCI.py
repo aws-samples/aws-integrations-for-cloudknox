@@ -6,8 +6,11 @@
 # - Retrieves CloudKnox Credentials from Secrets Manager
 # - Implements 'EvaluateCompliance' to return Non Compliant IAM Users (users with High CloudKnox 
 #   'Privilege Creep Index')
-
+#
 # @kmmahaj
+#
+# @mneelka - CloudKnox API
+#
 
 
 
