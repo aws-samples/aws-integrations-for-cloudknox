@@ -39,10 +39,10 @@ A Custom AWS Config Rule continuously monitors and evaluates the CloudKnox Privi
 The solution automates the initial setup and deployment in two distinct steps:
 
 1.	Set up the custom AWS Config Rule to evaluate the CloudKnox PCI score for the IAM user
-	1.	Follow the Installation steps  of the AWS Config Rule Development Kit (RDK) to set up the prerequisites and install the AWS Config RDK - https://rdk.readthedocs.io/en/latest/getting_started.html#installation
-	2.	Download the custom AWS Config rule from the CLOUDKNOX_PCI.zip file provided in our GitHub repository
-	3.	Unzip the file above and go to the directory where your RDK Rule files have been unzipped.  For e.g. if the RDK rule folder is named CLOUDKNOX_PCI then cd to that folder
-	4.	Deploy the rule by following the deployment instructions as outlined in the RDK. 
+	1.	Download the custom AWS Config rule from the CLOUDKNOX_PCI.zip file provided in our GitHub repository
+	2. Create an S3 bucket: config-rule-code-bucket-<accountid>-<region>. Create a CLOUDKNOX_PCI folder in the S3 bucket and upload the CLOUDKNOX_PCI.zip file there
+	3.	Launch the **aws-cloudknox-custom-config-rule.yml** template and accept all defaults. Ensure to change the accountid and region in the source s3 bucket parameter
+	 
 
 2.	Set up the AWS Config Remediation based continuous permissions rightsizing.
 	1. Launch the **aws-cloudknox-configremediation.yml** template.
