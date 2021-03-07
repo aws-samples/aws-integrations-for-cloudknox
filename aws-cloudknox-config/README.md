@@ -30,7 +30,7 @@ A Custom AWS Config Rule continuously monitors and evaluates the CloudKnox Privi
 
 3.	Launch the **aws-cloudknox-prereq.yml** and enter the Access Key, Secret Key and the Service Account ID generated in the previous step. Accept all other default values for this template.
 
-4.	The **aws-cloudknox-prereq.yml** template creates an Amazon S3 bucket with the following name: s3-cloudknoxiamuserrightsize-<AccountId>-<Region>. The <AccountId> and <Region> default to the AWS Account ID and AWS Region where you have deployed this template.
+4.	The **aws-cloudknox-prereq.yml** template creates an Amazon S3 bucket with the following name: s3-cloudknoxiamuserrightsize-AccountId-Region. The <AccountId> and <Region> default to the AWS Account ID and AWS Region where you have deployed this template.
 	1. Create a folder called ‘CloudKnox_IAMRightsize’ in this S3 bucket. 
 	2. Upload the CloudKnox_IAMRightsize.zip in this folder
 
@@ -39,8 +39,8 @@ A Custom AWS Config Rule continuously monitors and evaluates the CloudKnox Privi
 The solution automates the initial setup and deployment in two distinct steps:
 
 1.	Set up the custom AWS Config Rule to evaluate the CloudKnox PCI score for the IAM user
-	1.	Download the custom AWS Config rule from the CLOUDKNOX_PCI.zip file provided in our GitHub repository
-	2. Create an S3 bucket: config-rule-code-bucket-<accountid>-<region>. Create a CLOUDKNOX_PCI folder in the S3 bucket and upload the CLOUDKNOX_PCI.zip file there
+	1.	Download the custom AWS Config rule from the CLOUDKNOX_PCI.zip file provided in the configrules folder of this GitHub repo
+	2. Create an S3 bucket: config-rule-code-bucket-accountid-region. Create a CLOUDKNOX_PCI folder in the S3 bucket and upload the CLOUDKNOX_PCI.zip file there
 	3.	Launch the **aws-cloudknox-custom-config-rule.yml** template and accept all defaults. Ensure to change the accountid and region in the source s3 bucket parameter
 	 
 
