@@ -8,283 +8,273 @@
 
 # @kmmahaj
 #
-# @mneelka  - CloudKnox API
-
+# @mneelka/@anowar-cloudknox  - CloudKnox API
 
 import json
-import sys
-import datetime
 import boto3
-import botocore
-import datetime
-import time
-import random
 from botocore.exceptions import ClientError
-
-try:
-    import liblogging
-except ImportError:
-    pass
-
+import time
+import logging
 import http.client
-import mimetypes
-import ssl
 
-## AWS Secrets Manager - retrieve secretstring
-def get_secret_value(key='CloudKnoxSecretString'):
-          secretsmanager = boto3.client('secretsmanager')
-          secret_list = secretsmanager.list_secrets()['SecretList']
-          output = {}
-          for s in secret_list:
-              if key in s.values():
-                  output = secretsmanager.get_secret_value(SecretId=key)['SecretString']
-          return(output)
+logger = logging.getLogger(__name__)
+logging.getLogger().setLevel(logging.INFO)
+session = boto3.session.Session()
+curr_time = int(round(time.time() * 1000))
+ck_config_name = 'CloudKnoxSecretString'
+ck_endpoint_port = 443
+allowed_ck_config = ('serviceId', 'apiId', 'accessKey', 'secretKey', 'accountId', 'url')
 
 
-##  Identity Usage CloudKnox API - Retrieve PCI score:
-def getCloudKnoxRemediationPolicy(apiId, accessToken, serviceId, timestamp, url, accountId, userarn, port):
-    conn = http.client.HTTPSConnection(url, port)
-    content_type = "application/json"
-    print('apiId: '+ apiId )
-    print('accessToken: '+ accessToken )
-    print('serviceId: '+ serviceId )
-    print('timestamp: '+ timestamp )
-    print('url: ' + url)
-    print('accountId: ' + accountId)
-    print('userarn: ' + userarn)
-    
+def get_iam_user_name(iam_user_id):
+    """
+    get iam user resource name
+    :param iam_user_id: iam user id
+    :return: iam_user_name: iam user name
+    """
+    client = session.client(service_name='config')
+    iam_user_name = ''
+
+    try:
+        list_discovered_resources_resp = client.list_discovered_resources(
+            resourceType='AWS::IAM::User',
+            resourceIds=[iam_user_id]
+        )
+    except ClientError as e:
+        logger.error(f"error while executing list_discovered_resources, {e}")
+        raise Exception()
+    else:
+        iam_user_name = list_discovered_resources_resp['resourceIdentifiers'][0]['resourceName']
+    finally:
+        logger.info(f'iam user {iam_user_id} resource name {iam_user_name}')
+        return iam_user_name
+
+
+def get_secret_value(secret_name):
+    """
+    get secret value from AWS Secrets Manager
+    :param secret_name: name of the secret passed
+    :return secret_value: value of the secret passed
+    """
+    client = session.client(service_name='secretsmanager')
+    secret_value = ''
+    try:
+        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
+    except ClientError as e:
+        logger.error(f"error while executing get_secret_value, {e}")
+        raise Exception()
+    else:
+        secret_value = get_secret_value_response['SecretString'] if 'SecretString' in get_secret_value_response else ''
+    finally:
+        return secret_value
+
+
+def get_cloudknox_config():
+    """
+    get cloudknox config, throws exception if invalid
+    :return config: cloudknox config dict
+    """
+    config = json.loads(get_secret_value(ck_config_name))
+    for key in config:
+        if not config.get(key, ''):
+            logger.error(f"either key {key} do not exist, or non empty value found")
+            raise Exception()
+    return config
+
+
+def get_access_token(ck_config=None):
+    """
+    Authenticate CloudKnox API - Retrieve accessToken:
+    :param ck_config: cloudknox config dict
+    :return policy: cloudknox api token
+    """
+    assert isinstance(ck_config, dict), 'ck config must be of type dict'
+    conn = http.client.HTTPSConnection(ck_config['url'], ck_endpoint_port)
+
     headers = {
-      'X-CloudKnox-Access-Token': accessToken,
-      'X-CloudKnox-API-Id': apiId,
-      'X-CloudKnox-Service-Account-Id': serviceId,
-      'X-CloudKnox-Timestamp-Millis': timestamp,
-      'Content-Type': content_type
+        'X-CloudKnox-Service-Account-Id': ck_config['serviceId'],
+        'X-CloudKnox-Timestamp-Millis': str(curr_time),
+        'Content-Type': 'application/json'
     }
-    
-    endTime = int(round(time.time() * 1000))
-    startTime = endTime - (90*86400*1000)
-    
-    cloudknoxDict = {}
-    cloudknoxDict['authSystemInfo'] = {'id': accountId,
-                                        'type': 'AWS'}
-    cloudknoxDict['identityType'] = 'USER'
-    cloudknoxDict['identityIds'] = [userarn]
-    cloudknoxDict['aggregation'] = {'type': 'SUMMARY'}
-    cloudknoxDict['requestParams'] = {"scope": None,
-                                "resource": None,
-                                "resources": None,
-                                "condition": None
-                            }
-    cloudknoxDict['filter'] = {'historyDays': 90,
-                                'preserveReads': True,
-                                 "historyDuration": {
-                                    "startTime": startTime,
-                                    "endTime": endTime
-                                }
-                             }
-    payload = json.dumps(cloudknoxDict)
 
-    print('payload: ' + payload)
-    
+    cloudknox_dict = {
+        'serviceAccountId': ck_config['serviceId'],
+        'accessKey': ck_config['accessKey'],
+        'secretKey': ck_config['secretKey']
+    }
+    payload = json.dumps(cloudknox_dict)
+
+    conn.request("POST", "/api/v2/service-account/authenticate", payload, headers)
+    res = conn.getresponse()
+    data = res.read()
+    data_response = json.loads(data.decode("utf-8"))
+    token = data_response['accessToken']
+    if not token:
+        raise Exception()
+    return token
+
+
+def get_cloudknox_remediation_policies(access_token, user_arn, ck_config=None):
+    """
+    calls cloudknox api to get the list of policies as per usage
+    :param access_token: cloudknox api token
+    :param user_arn: cloudknox api token
+    :param ck_config: cloudknox service id
+    :return cloudknox_remediated_policies: cloudknox remediated policy documents
+    """
+    assert isinstance(ck_config, dict), 'ck config must be of type dict'
+    conn = http.client.HTTPSConnection(ck_config['url'], ck_endpoint_port)
+    headers = {
+        'X-CloudKnox-Access-Token': access_token,
+        'X-CloudKnox-API-Id': ck_config['apiId'],
+        'X-CloudKnox-Service-Account-Id': ck_config['serviceId'],
+        'X-CloudKnox-Timestamp-Millis': str(curr_time),
+        'Content-Type': "application/json"
+    }
+
+    cloudknox_dict = {
+        'authSystemInfo': {'id': ck_config['accountId'], 'type': 'AWS'},
+        'identityType': 'USER',
+        'identityIds': [user_arn],
+        'aggregation': {'type': 'SUMMARY'},
+        'requestParams': {'scope': None, 'resource': None, 'resources': None, 'condition': None},
+        'filter': {
+            'historyDays': 90,
+            'preserveReads': True,
+            'historyDuration': {
+                'startTime': curr_time,
+                'endTime': curr_time - (90 * 86400 * 1000)
+            }
+        }
+    }
+    payload = json.dumps(cloudknox_dict)
+    logger.info(f'remediation policy request payload {payload}')
+
     conn.request("POST", "/api/v2/role-policy/new", payload, headers)
     res = conn.getresponse()
     data = res.read()
     data_raw = data.decode()
-    print('data_raw: ' + data_raw)
-    dataResponse = json.loads(data.decode("utf-8"))
-    default_policy = {
-    'Version': '2012-10-17',
-    'Statement': [{
-        'Sid': 'AllowIAM',
-        'Effect': 'Allow',
-        'Action': ['iam:CreateRole'],
-        'Resource': '*'
-    }]
-    }
-    #defaultpolicyDict = eval(default_policy)
+    logger.info(f'raw data received for remediation policy {data_raw}')
+    response = json.loads(data.decode("utf-8"))
+    cloudknox_remediated_policies = response['data']
 
-    if (len(dataResponse['data'])==0):
-    #    policyText = '{\n  "Version" : "2008-10-17",\n  "Statement" : [ {\n    "Sid" : "Allow IAM",\n    "Effect" : "Allow",\n "Action" : [ "iam:CreateRole" ],\\n "Resource" : [ "*" ]\n } ]\n}'
-       
-        policyData ={}
-        policyData['policyName'] = "ck_activity_test"
-        policyData['policy'] = default_policy
-        print("inside data length 0")
-        dataList = [{}] * 1
-        dataList[0] = policyData
-        return dataList
-    if dataResponse.get('errorCode'):
-    #    policyText = '{\n  "Version" : "2008-10-17",\n  "Statement" : [ {\n    "Sid" : "Allow IAM",\n    "Effect" : "Allow",\n    "Resource" : "*",\n "Action" : [ "iam:CreateRole" ]\n } ]\n}'
-        policyData ={}
-        policyData['policyName'] = "ck_activity_test"
-        policyData['policy'] = default_policy
-        print("inside error code")
-        dataList = [{}] * 1
-        dataList[0] = policyData
-        return dataList
-        
-    print('dataResponse_policy: ' + dataResponse['data'][0]['policyName'])
-    return dataResponse['data']
+    if len(response['data']) == 0 or response.get('errorCode'):
+        default_policy = {
+            'Version': '2012-10-17',
+            'Statement': [{
+                'Sid': 'AllowIAM',
+                'Effect': 'Allow',
+                'Action': ['iam:CreateRole'],
+                'Resource': '*'
+            }]
+        }
+        policy_data = {'policyName': "ck_activity_test", 'policy': default_policy}
+        data_list = [{}] * 1
+        data_list[0] = policy_data
+        cloudknox_remediated_policies = data_list
 
-## Authenticate CloudKnox API - Retrieve accessToken:
-def getAccessToken(serviceId,timestamp,accessKey,secretKey,url,port):
-    conn = http.client.HTTPSConnection(url, port)
-    content_type = "application/json"
-    print('serviceId-accessToken: '+ serviceId )
-    print('timestamp-accessToken: '+ timestamp )
-    print('accessKey-accessToken: '+ accessKey )
-    print('secretKey-accessToken: '+ secretKey )
-    print('url-accessToken: ' + url)
+    return cloudknox_remediated_policies
 
-    headers = {
-      'X-CloudKnox-Service-Account-Id': serviceId,
-      'X-CloudKnox-Timestamp-Millis': timestamp,
-      'Content-Type': content_type
-    }
 
-    cloudknoxDict = {}
-    cloudknoxDict['serviceAccountId'] = serviceId
-    cloudknoxDict['accessKey'] = accessKey
-    cloudknoxDict['secretKey'] = secretKey
+def get_remediated_policy_list(user_name, ck_remediated_policies=None):
+    """
+    get iam policies and names based of least privileged principle
+    :param user_name: iam user name
+    :param ck_remediated_policies: list of policies from cloudknox API
+    :return iam_policies: iam policy dict
+    """
+    iam_policies = {}
+    count = 1
+    for ck_policy in ck_remediated_policies:
+        iam_policy_doc = json.dumps(ck_policy)
+        policy_name = '-'.join(['cloudknox', 'remediated', 'policy', user_name, str(curr_time), str(count)])
+        logger.info(f'policy {policy_name} with document {iam_policy_doc}')
+        count += 1
+        iam_policies[policy_name] = iam_policy_doc
+    return iam_policies
 
-    payload = json.dumps(cloudknoxDict)
-    print('payload-accessToken: ' + payload)
-    
-    conn.request("POST", "/api/v2/service-account/authenticate", payload, headers)
-    res = conn.getresponse()
-    data = res.read()
-    data_raw = data.decode()
-    print('data_raw: ' + data_raw)
-    dataResponse = json.loads(data.decode("utf-8"))
-    print('accessToken: ' + dataResponse['accessToken'])
-    return dataResponse['accessToken']
+
+def attach_remediated_iam_policies(client, iam_user, iam_policies=None):
+    """
+    attach policies to iam user
+    :param client: iam client
+    :param iam_user: ima user
+    :param iam_policies: iam polices to be attached
+    """
+    for policy_name, policy_doc in iam_policies.items():
+        logger.info(f'create managed policy {policy_name}')
+        create_policy_resp = client.create_policy(
+            PolicyName=policy_name,
+            PolicyDocument=policy_doc
+        )
+        logger.info(f'create_policy for {policy_name} response {json.dumps(create_policy_resp)}')
+        attach_user_policy_resp = client.attach_user_policy(
+            UserName=iam_user,
+            PolicyArn=create_policy_resp['Policy']['Arn']
+        )
+        logger.info(f'attach_user_policy for {policy_name} response {json.dumps(attach_user_policy_resp)}')
+        time.sleep(.1)
+
+
+def clean_unused_iam_policies(client, iam_user, remediated_iam_policy_list=None):
+    """
+    clean excess unused permissions from user
+    :param client: iam client
+    :param iam_user: iam user
+    :param remediated_iam_policy_list: list of required policy names
+    """
+    list_attached_user_policies_resp = client.list_attached_user_policies(UserName=iam_user)
+    if len(list_attached_user_policies_resp['AttachedPolicies']) > 0:
+        for policy in list_attached_user_policies_resp['AttachedPolicies']:
+            policy_arn = policy['PolicyArn']
+            if policy['PolicyName'] not in remediated_iam_policy_list:
+                logger.info(f'policy {policy_arn} to be detached')
+                detach_user_policy_resp = client.detach_user_policy(UserName=iam_user, PolicyArn=policy_arn)
+                logger.info(f'detach_user_policy for {policy_arn} response {json.dumps(detach_user_policy_resp)}')
+            else:
+                logger.info(f'policy {policy_arn} skipped')
+
+    list_groups_for_user_resp = client.list_groups_for_user(UserName=iam_user)
+    if len(list_groups_for_user_resp['Groups']) > 0:
+        for group in list_groups_for_user_resp['Groups']:
+            group_name = group['GroupName']
+            logger.info(f'group {group_name} to be detached')
+            remove_user_from_group_resp = client.remove_user_from_group(GroupName=group_name, UserName=iam_user)
+            logger.info(f'remove_user_from_group for {group_name} response {json.dumps(remove_user_from_group_resp)}')
+
+    list_user_policies_resp = client.list_user_policies(UserName=iam_user)
+    if len(list_user_policies_resp['Policies']) > 0:
+        for policy in list_user_policies_resp['Policies']:
+            policy_arn = policy['PolicyArn']
+            logger.info(f'user inline policy {policy_arn} to be deleted')
+            delete_user_policy_resp = client.delete_user_policy(UserName=iam_user, PolicyArn=policy_arn)
+            logger.info(f'delete_user_policy for {policy_arn} response {json.dumps(delete_user_policy_resp)}')
+
 
 def lambda_handler(event, context):
-    
-    ## CloudKnox Details in Secrets Manager
-    secretList = json.loads(get_secret_value('CloudKnoxSecretString'))
-    serviceId=""
-    apiId=""
-    accessKey=""
-    secretKey=""
-    accessToken=""
-    accountId=""
-    url=""
-    
-    serviceId_key='serviceId'
-    apiId_key='apiId'
-    accessKey_key='accessKey'
-    secretKey_key='secretKey'
-    accountId_key= 'accountId'
-    url_key='url'
-    
-    # userarn = event['userarn']
-    #userarn = event['parameterValue']
-    #userarn_1 = userarn.split(':')[-1] 
-    #username = userarn_1.replace("user/","")
+    iam_user_id = event['parameterValue']
+    assert iam_user_id != '', 'iam user resource id cannot be empty'
+    logger.info(f'iam user resource id {iam_user_id}')
 
-    config = boto3.client('config')
-    resourceid = event['parameterValue']
-    response = config.list_discovered_resources(
-        resourceType='AWS::IAM::User',
-        resourceIds=[
-            resourceid
-        ]
-    )
-    username = response['resourceIdentifiers'][0]['resourceName']
-    print('config user resourceid: ' + resourceid)
-    print('username: ' + username)
+    iam_user = get_iam_user_name(iam_user_id)
+    assert iam_user != '', 'iam user name cannot be empty'
+    logger.info(f'iam user name {iam_user} for resource id {iam_user_id}')
 
-      
-    if serviceId_key in secretList:
-        serviceId = secretList[serviceId_key]
-    if apiId_key in secretList:
-        apiId = secretList[apiId_key]
-    if accessKey_key in secretList:
-        accessKey = secretList[accessKey_key]
-    if secretKey_key in secretList:
-        secretKey = secretList[secretKey_key]
-    if accountId_key in secretList:
-        accountId = secretList[accountId_key]
-    if url_key in secretList:
-        url = secretList[url_key]
+    ck_config = get_cloudknox_config()
+    logger.info(f'cloudknox config successfully retrieved from secrets')
+    access_token = get_access_token(ck_config)
+    logger.info(f'cloudknox temporary access token successfully retrieved')
 
-    millis = int(round(time.time() * 1000))
-    timestamp = str(millis)
-    
-    userarn = 'arn:aws:iam::' + accountId +':user/' + username
+    user_arn = 'arn:aws:iam::' + ck_config['accountId'] + ':user/' + iam_user
+    ck_remediated_policies = get_cloudknox_remediation_policies(access_token, user_arn, ck_config)
 
-    accessToken = getAccessToken(serviceId,timestamp,accessKey,secretKey,url,443)
-    print('accessToken is: ' + accessToken)
-    iampolicy = getCloudKnoxRemediationPolicy(apiId, accessToken, serviceId, timestamp, url, accountId, userarn, 443)
-    
-    iamClient = boto3.client('iam')
-    iampolicydict={}
-    count = 0
-    for policy in iampolicy:
-        count = count + 1
-        cloudknoxiampolicy = policy['policy']
-        iampolicydict['Version'] = cloudknoxiampolicy['Version']
-        iampolicydict['Statement'] = cloudknoxiampolicy['Statement'][:3]
-        
-        PolicyDocument = json.dumps(iampolicydict)
-        print('PolicyDocument: ' + PolicyDocument)
-        
-        PolicyName = 'CloudKnoxRemediationPolicy-' + username + '-' +   str(random.randint(1,21)*5)
-        print('To be attached PolicyName: ' + PolicyName)
-        
-        response_attachedpolicies = iamClient.list_attached_user_policies(
-                                        UserName=username,
-                                    )
-        if len(response_attachedpolicies['AttachedPolicies'])>0:
-            for attachedpolicy in response_attachedpolicies['AttachedPolicies']:
-                policyarn = attachedpolicy['PolicyArn']
-                print('AttachedPolicyArn to be detached: ' + policyarn)
-                response_detach = iamClient.detach_user_policy(
-                                    UserName=username,
-                                    PolicyArn=policyarn
-                )
-         
+    if len(ck_remediated_policies) < 1:
+        logger.info(f'received empty list of iam_policies, aborting remediation')
+        return
 
-        response_group = iamClient.list_groups_for_user(
-                        UserName=username,
-        )
-        print('Grouplength: ' + str(len(response_group['Groups'])))
-        
-        if len(response_group['Groups'])>0:
-            for group in response_group['Groups']:
-                groupname = group['GroupName']
-                print('GroupName: ' + groupname)
-                response = iamClient.remove_user_from_group(
-                        GroupName=groupname,
-                        UserName=username
-                )
-        
-        iampolicylist = iamClient.list_policies(
-                            Scope='All',
-                            OnlyAttached=False
-                        )
-
-        if len(iampolicylist['Policies'])>0:
-            for iampolicy in iampolicylist['Policies']:
-                if (iampolicy['PolicyName'] == PolicyName):
-                    print('Policy already exists: ' + iampolicy['PolicyName'])
-                    response_delete = iamClient.delete_policy(
-                                         PolicyArn=iampolicy['Arn']
-                                       )
-        
-        print('Create new managed policy: ' + PolicyName) 
-        response_create = iamClient.create_policy(
-                                PolicyName=PolicyName,
-                                PolicyDocument=PolicyDocument
-                           )
-        PolicyArn = response_create['Policy']['Arn']
-        print('Attach new managed policy: ' + PolicyArn)
-        response = iamClient.attach_user_policy(
-                            UserName=username,
-                            PolicyArn=PolicyArn
-                    )
-                
-        
-    return 
+    iam_policies = get_remediated_policy_list(iam_user, ck_remediated_policies)
+    logger.info(f'received iam_policies dict {iam_policies}')
+    iam_client = session.client(service_name='iam')
+    attach_remediated_iam_policies(iam_client, iam_user, iam_policies)
+    clean_unused_iam_policies(iam_client, iam_user, iam_policies.keys())
 
