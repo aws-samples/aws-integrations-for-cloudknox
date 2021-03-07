@@ -247,6 +247,11 @@ Resources:
                 Resource: '*'
               - Sid: '5'
                 Action:
+                  - 'secretsmanager:*'
+                Effect: Allow
+                Resource: '*'
+              - Sid: '6'
+                Action:
                   - 'sts:AssumeRole'
                 Effect: Allow
                 Resource: '*'
