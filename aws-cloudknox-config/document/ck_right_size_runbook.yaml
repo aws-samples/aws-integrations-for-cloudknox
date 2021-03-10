@@ -1,0 +1,26 @@
+description: |-
+  An automation template that *right sizes* IAM permissions of a user using CloudKnox API 
+  ---
+  
+  API information at [https://api.cloudknox.io](https://api.cloudknox.io)
+  More information at [https://www.cloudknox.io](https://www.cloudknox.io)
+schemaVersion: '0.3'
+assumeRole: 'REPLACE_WITH_ROLE_ARN'
+parameters:
+  username:
+    type: String
+    description: iam user name
+mainSteps:
+  - name: ck_right_size_ssm_doc
+    action: aws:executeScript
+    inputs:
+      Runtime: python3.7
+      Handler: ck_right_size.handler
+      InputPayload:
+        username: '{{username}}'
+      Script: ''
+      Attachment: ck_right_size.py
+files:
+  ck_right_size.py:
+    checksums:
+      sha256: de0bcb0896911083613cd523d95ec6136f801797dc1e8ce4e56f9bcc548da82b

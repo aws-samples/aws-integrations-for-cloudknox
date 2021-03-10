@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  An automation template that right sizes IAM permissions
+  of a user using CloudKnox API
+Metadata:
+  Name: ck-right-size-ssm-doc
+  Version: 0.1.0
+Resources:
+  DocumentPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub ck-right-size-ssm-doc-${AWS::Region}
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: ckConfigPerms
+            Effect: Allow
+            Action:
+              - config:ListDiscoveredResources
+            Resource: '*'
+          - Sid: ckIAMPerms
+            Effect: Allow
+            Action:
+              - iam:AttachUserPolicy
+              - iam:CreatePolicy
+              - iam:CreatePolicyVersion
+              - iam:DeleteUserPolicy
+              - iam:DetachUserPolicy
+              - iam:ListAttachedUserPolicies
+              - iam:ListGroupsForUser
+              - iam:ListUserPolicies
+              - iam:RemoveUserFromGroup
+            Resource:
+              - arn:aws:iam::010798051093:group/*
+              - arn:aws:iam::010798051093:policy/*
+              - arn:aws:iam::010798051093:user/*
+          - Sid: ckSecretsPerms
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource: 
+              - arn:aws:secretsmanager:*:010798051093:secret:CloudKnox*
+  DocumentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+                - events.amazonaws.com
+                - ssm.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref DocumentPolicy
+      Path: /
+      RoleName: !Sub ck-right-size-ssm-doc-${AWS::Region}
