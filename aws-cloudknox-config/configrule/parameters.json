@@ -2,7 +2,7 @@
   "Version": "1.0",
   "Parameters": {
     "RuleName": "CLOUDKNOX_PCI",
-    "SourceRuntime": "python3.7",
+    "SourceRuntime": "python3.10",
     "CodeKey": "CLOUDKNOX_PCI.zip",
     "InputParameters": "{}",
     "OptionalParameters": "{}",

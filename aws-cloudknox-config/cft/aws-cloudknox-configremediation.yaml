@@ -45,7 +45,7 @@ Resources:
       Description: CloudKnox IAM User Rightsizing Lambda
       Handler: CloudKnox_IAMRightsize.lambda_handler
       MemorySize: '256'
-      Runtime: python3.7
+      Runtime: python3.10
       Timeout: 300
 
 #CloudKnox IAM Rightsize Lambda Role
