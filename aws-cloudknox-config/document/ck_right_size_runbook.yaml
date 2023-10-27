@@ -14,7 +14,7 @@ mainSteps:
   - name: ck_right_size_ssm_doc
     action: aws:executeScript
     inputs:
-      Runtime: python3.7
+      Runtime: python3.10
       Handler: ck_right_size.handler
       InputPayload:
         username: '{{username}}'

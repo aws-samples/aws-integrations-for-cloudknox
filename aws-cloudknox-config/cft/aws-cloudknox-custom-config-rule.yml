@@ -54,7 +54,7 @@ Parameters:
     Type: String
     MinLength: '1'
     MaxLength: '255'
-    Default: 'python3.7'
+    Default: 'python3.10'
   SourcePeriodic:
     Description: Execution Frequency
     Type: String
